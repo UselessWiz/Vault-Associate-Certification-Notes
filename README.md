@@ -1,1 +1,0 @@
-# Vault-Associate-Certification-Notes

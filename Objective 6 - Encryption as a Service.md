@@ -1,0 +1,21 @@
+### A. Encrypt and Decrypt Secrets
+- Encryption is done by writing to the `transit/encrypt/<key>` endpoint, which encrypts a Base64 encoded plaintext with the given key. 
+- The ciphertext starts with the ascii characters "vault:v\<version>:", which indicates which version key has been used to encrypt the plaintext and states that this was encrypted with vault.
+- Decryption is done by writing to the `transit/decrypt/<key>` endpoint, which decrypts a VAULT encrypted base64 payload. It returns the plaintext in base64 encoding.
+- Note that the HTTP API imposes a max request size of 32MB to prevent DoS attacks. This can be configured with the listener block in the vault server configuration.
+### B. Rotate the encryption key
+- Periodic rotation is recommended in accordance with NIST guidelines. AES keys are recommended to be rotated before approximately 2^32 encryption operations have been performed.
+- Keys can be rotated by writing to the `transit/keys/<key>/rotate` endpoint. Future encryptions will use the new key, but old data can still be encrypted if the old keys are still valid.
+- Old data can be rewrapped if you provide the ciphertext; write to `transit/rewrap/<key>` and provide the ciphertext. This operation does not reveal the plaintext.
+	- This means that vault policies could give an untrusted process the ability to rewrap encrypted data, as the process does not require access to the plaintext.
+- Keys can be imported if needed, but it's more secure to generate keys within vault. 
+	- First, a wrapping key needs to be read from transit: `transit/wrapping_key`
+	- The existing key needs to be wrapped with the wrapping key to be used by Vault. If the key to import is in PKCS#11, there are two scenarios - either use the CKM_RSA_AES_KEY_WRAP mechanism or generate an AES key and wrap the target key. The WES key then needs to be wrapped.
+	- This process can be done manually if needed:
+		- Generate an ephemeral 256-bit AES key.
+		- Wrap the target key using the ephemeral AES key with AES-KWP.
+		- Wrap the AES key under the Vault wrapping key using RSAES-OAEP with MGF1 and either SHA-1, SHA-224, SHA-256, SHA-384, or SHA-512.
+	    - Delete the ephemeral AES key.
+	    - Append the wrapped target key to the wrapped AES key.
+	    - Base64 encode the result.
+- Note for imported keys that rotation is only supported if `allow_rotation` was set to true when the key is imported. Once an imported key is rotated, it won't support further import operations.
